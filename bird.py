@@ -19,7 +19,7 @@ def clamp(x, upper, lower):
         return lower
     return x
 
-crownImage = pygame.transform.scale(pygame.image.load('Assets/crown.png'), (38, 30))
+crownImage = pygame.transform.scale(pygame.image.load('Assets/crown2.png'), (28, 20))
 
 class Bird:
     def __init__(self, x, y):
@@ -27,10 +27,12 @@ class Bird:
         self.lifetime = 0
         self.screen = pygame.display.get_surface()
         self.image = pygame.transform.scale(pygame.image.load('Assets/bird.png').convert_alpha(), (25, 20))
+        self.score = 0
 
         self.rect = self.image.get_rect(center=(x, y))
         self.vel = pygame.math.Vector2()
         self.crowned = False
+        self.dead = False
 
         # -> building the network
         self.network = network.Network()
@@ -42,12 +44,11 @@ class Bird:
     def getNearestPipe(self, pipes):
         nearest = pipes[0]
         for pipe in pipes:
-            if nearest.centerPoint[0] < self.rect.centerx:
+            if nearest.centerPoint[0] < self.rect.x:
                 nearest = pipe
                 continue
-            rect = pipe.bottomRect
-            if self.rect.centerx < pipe.centerPoint[0]:
-                if pipe.centerPoint[0] - self.rect.centerx < nearest.centerPoint[0] - self.rect.centerx:
+            if self.rect.x < pipe.centerPoint[0]:
+                if pipe.centerPoint[0] - self.rect.x < nearest.centerPoint[0] - self.rect.x:
                     nearest = pipe
         return nearest
 
@@ -59,25 +60,32 @@ class Bird:
     def draw(self):
         angle = -(self.vel.y / 10) * 60
         image, rect = rotateAroundCenter(self.image, angle, self.rect.centerx, self.rect.centery)
+        if self.dead:
+            colouredImage = pygame.Surface(self.image.get_size()).convert_alpha()
+            colouredImage.fill((245, 72, 66))
+            image.blit(colouredImage, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
         self.screen.blit(image, rect)
-        if self.crowned:
-            self.screen.blit(crownImage, (self.rect.centerx - crownImage.get_width() / 2, self.rect.centery - self.image.get_height() * 2))
+
+    def drawCrown(self):
+        self.screen.blit(crownImage, (self.rect.centerx - crownImage.get_width() / 2, self.rect.centery - self.image.get_height() * 1.5))
 
     def flap(self):
         self.vel.y = -6
 
     def update(self, pipes):
-        # -> apply gravity
-        self.vel.y += 0.4
-        self.nearest = self.getNearestPipe(pipes)
-
-        # -> getting stuff from network
-        deltaX = self.nearest.centerPoint[0] - self.rect.centerx
-        deltaY = self.nearest.centerPoint[1] - self.rect.centery
-        velY = self.vel.y
-        jump = self.network.predict([np.array([deltaX, deltaY, velY])])[0]
-        if jump[0] > jump[1]:
-            self.flap()
+        if self.dead:
+            self.vel.y += 0.6
+        else:
+            self.nearest = self.getNearestPipe(pipes)
+            # -> apply gravity
+            self.vel.y += 0.4
+            # -> getting stuff from network
+            deltaX = self.nearest.centerPoint[0] - self.rect.centerx
+            deltaY = self.nearest.centerPoint[1] - self.rect.centery
+            velY = self.vel.y
+            jump = self.network.predict([np.array([deltaX, deltaY, velY])])[0]
+            if jump[0] > jump[1]:
+                self.flap()
 
         # -> apply velocity
         self.rect.x += self.vel.x
@@ -86,10 +94,10 @@ class Bird:
         if self.rect.centery <= -25:
             self.rect.centery = -25
     
-    def reproduce(self, x, y):
+    def reproduce(self, x, y, mutationRate):
         child = Bird(x, y)
         childNetwork = child.network
-        if random.random() < 0.1: # -> 30 % chance of mutation
+        if random.random() < mutationRate: # -> 20 % chance of mutation
             for _ in range(3): # -> mutate 3 times
                 layer = random.choice([layer for layer in childNetwork.layers if not isinstance(layer, network.ActivationLayer)])
                 if random.random() < 0.5:
@@ -118,7 +126,7 @@ class Pipe:
 
         self.topRect = self.topImage.get_rect(topleft = (x, y))
         self.bottomRect = self.bottomImage.get_rect(topleft = (x1, y1))
-        self.centerPoint = (self.bottomRect.x + 25, self.bottomRect.y - self.gapSize * 0.5)
+        self.centerPoint = (self.bottomRect.x + 50, self.bottomRect.y - self.gapSize * 0.5)
 
     def update(self):
         self.topRect.x -= 2
